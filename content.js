@@ -1,88 +1,105 @@
-var title;
-var boldTitle;
-var boldFlag = 0;
-var changedFlag = 3;
-var observer;
+const SiteTitleBoldifier = {
+  originalTitle: "",
+  boldTitle: "",
+  observer: null,
+  isBold: false,
 
-function boldString(str){
-  boldStr = "";
-  var len = str.length;
-  for(var i = 0 ; i<len ; i++){
-    var char = str[i];
-    if (/[A-Z]/.test (char))
-      boldChar = String.fromCodePoint (char.codePointAt (0) + 120211);
-    else{
-      if (/[a-z]/.test (char))
-        boldChar = String.fromCodePoint (char.codePointAt (0) + 120205);
+  // Converts the title chars to Unicode math bold equivalent
+  bold() {
+    let boldStr = "";
+    for(const char of this.originalTitle){
+      let boldChar;
+      if (/[A-Z]/.test (char)) {
+        boldChar = String.fromCodePoint (char.codePointAt (0) + 120211)}
+      else if (/[a-z]/.test (char)) {
+        boldChar = String.fromCodePoint (char.codePointAt (0) + 120205)}
+      else if (/[0-9]/.test (char)) {
+        boldChar = String.fromCodePoint (char.codePointAt (0) + 120764)}
       else {
-        if (/[0-9]/.test (char))
-          boldChar = String.fromCodePoint (char.codePointAt (0) + 120764);
-        else {
-          boldChar = char;
-        }
+        boldChar = char;
       }
+      boldStr += boldChar;
     }
-    boldStr += boldChar;
-  }
-  return boldStr;
-}
+    return boldStr;
+  },
 
-function transToBold() {
-  title = document.title;
-  boldTitle = boldString(title);
-  document.title = boldTitle;
-  if(boldFlag)
-    return;
-  setObserverToTitle();
-  boldFlag = 1;
-}
+  // Applies the bold title and starts monitoring
+  apply() {
+    if(document.title === this.boldTitle) return;
 
-function unBold() {
-if(title != ""){
-  document.title = title;
-  boldFlag = 0;
+    this.originalTitle = document.title;
+    this.boldTitle = this.bold();
+    document.title = this.boldTitle;
 
-}
-}
+    if(this.isBold)
+      return;
 
-function onchangeVisibility() {
-  if (document.visibilityState == "visible" && boldFlag){
-    unBold();
+    this.observeTitle();
+    this.isBold = true;
+  },
+
+  // Resets the title and disconnects the observer
+  reset() {
+    if(this.originalTitle != ""){
+      document.title = this.originalTitle;
+      this.isBold = false;
     }
-}
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+  },
 
-function setObserverToTitle(){
-  var target = document.querySelector('head > title');
-  observer = new window.WebKitMutationObserver(function(mutations) {
-      mutations.forEach(function(mutation) {
-        if (boldFlag){
-          if(mutation.target.textContent == boldTitle)
-            return;
-          if(mutation.target.textContent != title){
-            transToBold(mutation.target.textContent);
-            observer.disconnect();
+  // Watches for changes to the title and reapplies bold
+  observeTitle() {
+    const target = document.querySelector('head > title');
+
+    if (!target) return;
+
+    this.observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+          if (this.isBold){
+            const currentTitle = mutation.target.textContent;
+            if(currentTitle === this.boldTitle) return;
+            if(currentTitle !== this.originalTitle){
+              this.apply();
+              this.observer.disconnect();
+              }
+            else{
+              mutation.target.textContent = this.boldTitle;
             }
-          else{
-            mutation.target.textContent = boldTitle;
           }
-        }
-      });
-  });
-  observer.observe(target, { subtree: true, characterData: true, childList: true });
-}
+        };
+    });
+    this.observer.observe(target, { subtree: true, characterData: true, childList: true });
+  },
 
-function checkSiteVisibility() {
-  if (document.visibilityState == "hidden")
-    transToBold();
-}
+  // Called when the tab becomes hidden
+  checkSiteVisibility() {
+    if (document.visibilityState == "hidden")
+      this.apply();
+  },
 
-function waitForTitle(){
-  var interval = setInterval(function(){
-      if(document.getElementsByTagName("title")[0]){
-          clearInterval(interval);
-          checkSiteVisibility();
-      }}, 100);
-}
+  // Called when the tab becomes visible
+  onchangeVisibility() {
+    if (document.visibilityState == "visible" && this.isBold){
+      this.reset();
+      }
+  },
 
-waitForTitle();
-document.addEventListener("visibilitychange", onchangeVisibility);
+  // Initialization logic
+  init(){
+    const waitForTitle = setInterval(() => {
+      if (document.querySelector("title")) {
+        clearInterval(waitForTitle);
+        this.checkSiteVisibility();
+      }
+        
+    }, 100);
+
+    document.addEventListener("visibilitychange", () => this.onchangeVisibility());
+  }
+
+};
+
+SiteTitleBoldifier.init();
